@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_core.prompts import (
@@ -59,16 +60,22 @@ if "admin" not in st.session_state:
 if "username" not in st.session_state:
     st.session_state.username = None
 
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
 # ------------------------
 # LLM
 # ------------------------
-import os
+@st.cache_resource
+def load_llm():
+    return ChatGoogleGenerativeAI(
+        model=MODEL_NAME,
+        temperature=TEMPERATURE,
+        google_api_key=os.getenv("GOOGLE_API_KEY")
+    )
 
-llm = ChatGoogleGenerativeAI(
-    model=MODEL_NAME,
-    temperature=TEMPERATURE,
-    google_api_key=os.getenv("GOOGLE_API_KEY")
-)
+llm = load_llm()
+
 prompt = ChatPromptTemplate.from_messages(
     [
         ("system", SYSTEM_PROMPT),
@@ -98,9 +105,12 @@ if not st.session_state.logged_in and not st.session_state.admin:
     with tab1:
         username = st.text_input("Username")
         if st.button("Login"):
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.rerun()
+            if username.strip():
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.rerun()
+            else:
+                st.warning("Please enter username")
 
     with tab2:
         password = st.text_input("Admin Password", type="password")
@@ -150,7 +160,6 @@ elif st.session_state.logged_in:
     st.title("🤖 LeetCode AI Mentor")
     st.caption(f"Welcome {username}")
 
-    # Sidebar
     with st.sidebar:
         st.header("⚙ Options")
 
@@ -160,20 +169,20 @@ elif st.session_state.logged_in:
 
         if st.button("Clear History"):
             clear_history(username)
+            st.session_state.messages = []
             st.success("History Cleared")
 
         if st.button("Delete Account"):
             delete_account(username)
             st.session_state.logged_in = False
+            st.session_state.messages = []
             st.rerun()
 
         if st.button("Logout"):
             save_history(username)
             st.session_state.logged_in = False
+            st.session_state.messages = []
             st.rerun()
-
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
@@ -190,18 +199,22 @@ elif st.session_state.logged_in:
             st.markdown(question)
 
         with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                response = chatbot.invoke(
-                    {"question": question},
-                    config={
-                        "configurable": {
-                            "session_id": username
-                        }
-                    },
-                )
+            try:
+                with st.spinner("Thinking..."):
+                    response = chatbot.invoke(
+                        {"question": question},
+                        config={
+                            "configurable": {
+                                "session_id": username
+                            }
+                        },
+                    )
 
                 st.markdown(response.content)
 
-        st.session_state.messages.append(
-            {"role": "assistant", "content": response.content}
-        )
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": response.content}
+                )
+
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
