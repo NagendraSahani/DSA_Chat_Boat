@@ -1,220 +1,83 @@
 import os
 import streamlit as st
 from dotenv import load_dotenv
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    MessagesPlaceholder,
-)
-from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_google_genai import ChatGoogleGenerativeAI
-
-from config import *
-from prompt import SYSTEM_PROMPT
-from memory import (
-    get_session_history,
-    clear_history,
-    show_history,
-    save_history,
-    list_users,
-    delete_account,
-    admin_view_history
-)
 
 load_dotenv()
 
 # ------------------------
-# Page Config
+# CONFIG
 # ------------------------
+MODEL_NAME = "gemini-1.5-flash"
+TEMPERATURE = 0.3
+
 st.set_page_config(
     page_title="LeetCode AI Mentor",
     page_icon="🤖",
     layout="wide"
 )
 
-# ------------------------
-# Custom CSS
-# ------------------------
-st.markdown("""
-<style>
-.main-title {
-    font-size: 42px;
-    font-weight: bold;
-    color: #4CAF50;
-}
-.subtitle {
-    font-size: 18px;
-    color: gray;
-}
-</style>
-""", unsafe_allow_html=True)
+st.title("🤖 LeetCode AI Mentor")
+st.caption("Testing Deployment")
 
 # ------------------------
-# Session State
-# ------------------------
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-if "admin" not in st.session_state:
-    st.session_state.admin = False
-
-if "username" not in st.session_state:
-    st.session_state.username = None
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# ------------------------
-# LLM
+# LOAD LLM
 # ------------------------
 @st.cache_resource
 def load_llm():
+    api_key = os.getenv("GOOGLE_API_KEY")
+
+    if not api_key:
+        st.error("GOOGLE_API_KEY not found!")
+        st.stop()
+
     return ChatGoogleGenerativeAI(
         model=MODEL_NAME,
         temperature=TEMPERATURE,
-        google_api_key=os.getenv("GOOGLE_API_KEY")
+        google_api_key=api_key
     )
 
-llm = load_llm()
-
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", SYSTEM_PROMPT),
-        MessagesPlaceholder(variable_name="history"),
-        ("human", "{question}"),
-    ]
-)
-
-chain = prompt | llm
-
-chatbot = RunnableWithMessageHistory(
-    chain,
-    get_session_history,
-    input_messages_key="question",
-    history_messages_key="history",
-)
+try:
+    llm = load_llm()
+    st.success("Gemini Loaded Successfully")
+except Exception as e:
+    st.error(f"LLM Load Error: {str(e)}")
+    st.stop()
 
 # ------------------------
-# Login Page
+# CHAT HISTORY
 # ------------------------
-if not st.session_state.logged_in and not st.session_state.admin:
-    st.markdown('<p class="main-title">🤖 LeetCode AI Mentor</p>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">Master DSA with AI Guidance</p>', unsafe_allow_html=True)
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-    tab1, tab2 = st.tabs(["User Login", "Admin Login"])
-
-    with tab1:
-        username = st.text_input("Username")
-        if st.button("Login"):
-            if username.strip():
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                st.rerun()
-            else:
-                st.warning("Please enter username")
-
-    with tab2:
-        password = st.text_input("Admin Password", type="password")
-        if st.button("Admin Login"):
-            if password == "admin123":
-                st.session_state.admin = True
-                st.rerun()
-            else:
-                st.error("Wrong password")
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
 # ------------------------
-# Admin Panel
+# INPUT
 # ------------------------
-elif st.session_state.admin:
-    st.title("🛠 Admin Panel")
+question = st.chat_input("Ask DSA Question...")
 
-    col1, col2, col3 = st.columns(3)
+if question:
+    st.session_state.messages.append(
+        {"role": "user", "content": question}
+    )
 
-    with col1:
-        if st.button("Show Users"):
-            users = list_users()
-            st.write(users)
+    with st.chat_message("user"):
+        st.markdown(question)
 
-    with col2:
-        user_to_view = st.text_input("Enter username")
-        if st.button("View History"):
-            chats = admin_view_history(user_to_view)
-            st.write(chats)
+    with st.chat_message("assistant"):
+        try:
+            with st.spinner("Thinking..."):
+                response = llm.invoke(question)
 
-    with col3:
-        delete_user = st.text_input("Delete User")
-        if st.button("Delete"):
-            delete_account(delete_user)
-            st.success("Deleted Successfully")
+            answer = response.content
+            st.markdown(answer)
 
-    if st.button("Logout Admin"):
-        st.session_state.admin = False
-        st.rerun()
+            st.session_state.messages.append(
+                {"role": "assistant", "content": answer}
+            )
 
-# ------------------------
-# User Chat UI
-# ------------------------
-elif st.session_state.logged_in:
-
-    username = st.session_state.username
-
-    st.title("🤖 LeetCode AI Mentor")
-    st.caption(f"Welcome {username}")
-
-    with st.sidebar:
-        st.header("⚙ Options")
-
-        if st.button("Show History"):
-            chats = show_history(username)
-            st.write(chats)
-
-        if st.button("Clear History"):
-            clear_history(username)
-            st.session_state.messages = []
-            st.success("History Cleared")
-
-        if st.button("Delete Account"):
-            delete_account(username)
-            st.session_state.logged_in = False
-            st.session_state.messages = []
-            st.rerun()
-
-        if st.button("Logout"):
-            save_history(username)
-            st.session_state.logged_in = False
-            st.session_state.messages = []
-            st.rerun()
-
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    question = st.chat_input("Ask any DSA question...")
-
-    if question:
-        st.session_state.messages.append(
-            {"role": "user", "content": question}
-        )
-
-        with st.chat_message("user"):
-            st.markdown(question)
-
-        with st.chat_message("assistant"):
-            try:
-                with st.spinner("Thinking..."):
-                    response = chatbot.invoke(
-                        {"question": question},
-                        config={
-                            "configurable": {
-                                "session_id": username
-                            }
-                        },
-                    )
-
-                st.markdown(response.content)
-
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": response.content}
-                )
-
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
+        except Exception as e:
+            st.error(f"Response Error: {str(e)}")
