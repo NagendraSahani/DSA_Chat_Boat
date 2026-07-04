@@ -62,11 +62,13 @@ if "username" not in st.session_state:
 # ------------------------
 # LLM
 # ------------------------
+import os
+
 llm = ChatGoogleGenerativeAI(
     model=MODEL_NAME,
     temperature=TEMPERATURE,
+    google_api_key=os.getenv("GOOGLE_API_KEY")
 )
-
 prompt = ChatPromptTemplate.from_messages(
     [
         ("system", SYSTEM_PROMPT),
