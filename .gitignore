@@ -1,0 +1,17 @@
+.venv/
+.env
+__pycache__/
+logs/
+
+*.zip
+chat_hai.zip.venv/
+.env
+__pycache__/
+logs/
+data/
+
+*.zip
+*.pkl
+*.h5
+*.keras
+chat_hai.zip
