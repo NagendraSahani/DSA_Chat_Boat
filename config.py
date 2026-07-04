@@ -1,4 +1,4 @@
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-2.0-flash"
 
 TEMPERATURE = 0.3
 
